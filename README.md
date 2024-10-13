@@ -18,7 +18,7 @@ Copy and paste this commands to your terminal:
 
 1. `cd /tmp`
 2. `git clone https://github.com/origrata/winbox-linux-installer.git`
-3. `cd winbox-installer`
+3. `cd winbox-linux-installer`
 4. `sudo ./Winbox-Setup install` **OR** `sudo bash Winbox-Setup install`
 
 ## Icon cache in GTK based desktop:
