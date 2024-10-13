@@ -1,0 +1,185 @@
+#! /bin/bash
+# Winbox Installer for Linux (Native)
+# What this script does:
+#   1. Download the latest Winbox from Mikrotik's website
+#   2. Extract the downloaded ZIP file
+#   3. Check if ImageMagick is installed, and install it if not
+#   4. Resize the icon to 48, 64, 128, and 256 px
+#   5. Copy the executable to /usr/local/bin/ directory
+#   6. Copy resized icons to /usr/share/icons/hicolor/*/apps
+#   7. Create a launcher for Winbox
+#   8. Update desktop menu and icon cache
+
+# URL for the latest Winbox Linux version
+WINBOX_URL="https://download.mikrotik.com/routeros/winbox/4.0beta9/WinBox_Linux.zip"
+WINBOX_DIR="/tmp/winbox_linux"
+
+# Print error messages and defining error status with non-zero value
+errMsg() {
+  echo "USAGE:
+To install
+sudo bash winbox-setup install
+
+To remove
+sudo bash winbox-setup remove"
+  exit 1
+}
+
+# Function to check and install ImageMagick if not present
+checkImageMagick() {
+  if ! command -v convert &> /dev/null; then
+    echo -n "ImageMagick is not installed. Installing ImageMagick..."
+    sudo apt-get update > /dev/null 2>&1
+    sudo apt-get install -y imagemagick > /dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+      echo "FAILED to install ImageMagick."
+      exit 1
+    fi
+    echo "DONE"
+  else
+    echo "ImageMagick is already installed."
+  fi
+}
+
+# Download and extract Winbox
+downloadWinbox() {
+  echo -n "Downloading Winbox..."
+  
+  # Create temporary directory
+  mkdir -p $WINBOX_DIR
+
+  # Download the zip file
+  wget -q -O "$WINBOX_DIR/WinBox_Linux.zip" "$WINBOX_URL"
+  if [[ $? -ne 0 ]]; then
+    echo "FAILED to download"
+    exit 1
+  fi
+  echo "DONE"
+
+  echo -n "Extracting Winbox..."
+  # Unzip the downloaded file
+  unzip -o "$WINBOX_DIR/WinBox_Linux.zip" -d "$WINBOX_DIR"
+  if [[ $? -ne 0 ]]; then
+    echo "FAILED to extract"
+    exit 1
+  fi
+  echo "DONE"
+}
+
+# Resizing icons
+resizeIcons() {
+  ICON=$WINBOX_DIR/assets/img/winbox.png
+  if [[ -f $ICON ]]; then
+    echo -n "Resizing icons..."
+    for size in 48 64 128 256; do
+      convert "$ICON" -resize ${size}x${size} "$WINBOX_DIR/winbox-${size}.png"
+      if [[ $? -ne 0 ]]; then
+        echo "FAILED to resize icon to ${size}x${size}"
+        exit 1
+      fi
+    done
+    echo "DONE"
+  else
+    echo "FAILED: Icon file not found!"
+    exit 1
+  fi
+}
+
+# Copying Winbox files
+filesCp() {
+  echo -n "Copying files..."
+
+  EXECUTABLE=$WINBOX_DIR/WinBox
+
+  if [[ -f $EXECUTABLE ]]; then
+    # Copy executable to /usr/local/bin
+    cp -f $EXECUTABLE /usr/local/bin/winbox
+    chmod a+x /usr/local/bin/winbox
+
+    # Copy resized icons
+    for size in 48 64 128 256 ; do
+      mkdir -p /usr/share/icons/hicolor/${size}x${size}/apps/
+      cp -f "$WINBOX_DIR/winbox-${size}.png" /usr/share/icons/hicolor/${size}x${size}/apps/winbox.png
+    done
+    echo "DONE"
+  else
+    echo "FAILED: Winbox executable not found!"
+    exit 1
+  fi
+}
+
+# Creating launcher for Winbox
+lncCrt() {
+  echo -n "Creating application launcher..."
+  if touch /usr/share/applications/winbox.desktop
+  then
+    echo "[Desktop Entry]" > /usr/share/applications/winbox.desktop
+    echo "Name=Winbox" >> /usr/share/applications/winbox.desktop
+    echo "GenericName=Configuration tool for RouterOS" >> /usr/share/applications/winbox.desktop
+    echo "Comment=Configuration tool for RouterOS" >> /usr/share/applications/winbox.desktop
+    echo "Exec=/usr/local/bin/winbox" >> /usr/share/applications/winbox.desktop
+    echo "Icon=winbox" >> /usr/share/applications/winbox.desktop
+    echo "Terminal=false" >> /usr/share/applications/winbox.desktop
+    echo "Type=Application" >> /usr/share/applications/winbox.desktop
+    echo "StartupNotify=true" >> /usr/share/applications/winbox.desktop
+    echo "Categories=Network;RemoteAccess;" >> /usr/share/applications/winbox.desktop
+    echo "Keywords=winbox;mikrotik;" >> /usr/share/applications/winbox.desktop
+    echo "DONE"
+
+    # Update desktop database and icon cache
+    echo -n "Updating desktop menu and icon cache..."
+   sudo update-desktop-database 
+   sudo gtk-update-icon-cache /usr/share/icons/hicolor
+    echo "DONE"
+  else
+    echo "FAILED"
+    exit 1
+  fi
+}
+
+# Removing files
+filesRm() {
+  echo -n "Removing launcher..."
+  find /usr/share/applications/ -name "winbox.desktop" -delete
+  echo "DONE"
+
+  echo -n "Removing icons..."
+  find /usr/share/icons -name "winbox.png" -delete
+  echo "DONE"
+
+  echo -n "Removing executable..."
+  rm -rf /usr/local/bin/winbox
+  echo "DONE"
+
+  # Update desktop database and icon cache after removal
+  echo -n "Updating desktop menu and icon cache after removal..."
+  sudo update-desktop-database
+  sudo gtk-update-icon-cache /usr/share/icons/hicolor
+  echo "DONE"
+}
+
+if [ -z "$1" ]; then
+  errMsg;
+fi
+case $1 in
+  'install' )
+    checkImageMagick
+    downloadWinbox
+    resizeIcons
+    if filesCp
+    then
+      lncCrt
+    else
+      echo "FAILED"
+      exit 1
+    fi
+  ;;
+
+  'remove' )
+    filesRm
+  ;;
+
+  * )
+    errMsg
+  ;;
+esac
